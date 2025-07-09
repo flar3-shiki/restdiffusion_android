@@ -24,4 +24,13 @@ interface StableDiffusionApiService {
 
     @POST("/sdapi/v1/img2img")
     suspend fun imageToImage(@Body request: Img2ImgRequest): Txt2ImgResponse
+
+    @GET("sdapi/v1/sd-vae")
+    suspend fun getVaes(): List<Vae>
+
+    @GET("sdapi/v1/embeddings")
+    suspend fun getEmbeddings(): EmbeddingsResponse
+
+    @POST("sdapi/v1/interrupt")
+    suspend fun interrupt()
 }

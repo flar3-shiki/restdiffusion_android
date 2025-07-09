@@ -8,7 +8,7 @@ import androidx.room.RoomDatabase
 import jp.kira.sdwebuiremote.db.dao.QueueDao
 import jp.kira.sdwebuiremote.db.entity.QueueItem
 
-@Database(entities = [HistoryItem::class, Preset::class, Style::class, QueueItem::class], version = 6, exportSchema = false)
+@Database(entities = [HistoryItem::class, Preset::class, Style::class, QueueItem::class], version = 9, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun historyDao(): HistoryDao
     abstract fun presetDao(): PresetDao

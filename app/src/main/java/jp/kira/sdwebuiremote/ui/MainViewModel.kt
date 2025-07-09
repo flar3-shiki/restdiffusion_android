@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.os.Build
+import android.content.Intent
 import android.provider.MediaStore
 import android.util.Base64
 import android.widget.Toast
@@ -14,17 +15,20 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import jp.kira.sdwebuiremote.R
 import jp.kira.sdwebuiremote.data.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
+import retrofit2.HttpException
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import com.google.gson.Gson
 import jp.kira.sdwebuiremote.data.repository.QueueRepository
 import jp.kira.sdwebuiremote.db.entity.QueueItem
+import jp.kira.sdwebuiremote.service.QueueExecutionService
 import jp.kira.sdwebuiremote.util.ImageHelper
 import java.util.concurrent.TimeUnit
 
@@ -115,10 +119,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val _loras = MutableStateFlow<List<Lora>>(emptyList())
     val loras = _loras.asStateFlow()
 
+    private val _vaes = MutableStateFlow<List<Vae>>(emptyList())
+    val vaes = _vaes.asStateFlow()
+
+    private val _embeddings = MutableStateFlow<List<String>>(emptyList())
+    val embeddings = _embeddings.asStateFlow()
+
     private val _selectedLoras = MutableStateFlow<List<SelectedLora>>(emptyList())
     val selectedLoras = _selectedLoras.asStateFlow()
 
     val selectedModel = MutableStateFlow<SdModel?>(null)
+
+    val selectedVae = MutableStateFlow<Vae?>(null)
 
     // --- History ---
     val historyItems = historyDao.getAll()
@@ -347,9 +359,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val lorasJob = viewModelScope.launch {
                     _loras.value = service.getLoras()
                 }
+                val vaesJob = viewModelScope.launch {
+                    _vaes.value = service.getVaes()
+                }
+                val embeddingsJob = viewModelScope.launch {
+                    _embeddings.value = service.getEmbeddings().loaded.keys.toList()
+                }
                 samplersJob.join()
                 modelsJob.join()
                 lorasJob.join()
+                vaesJob.join()
+                embeddingsJob.join()
 
                 _connectionState.value = ConnectionState.Connected
             } catch (e: Exception) {
@@ -357,7 +377,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     // Don't update state if the job was cancelled
                     return@launch
                 }
-                _connectionState.value = ConnectionState.Error("Connection failed: ${e.message}")
+                val context = getApplication<Application>().applicationContext
+                val errorMessage = when (e) {
+                    is java.net.UnknownHostException -> context.getString(R.string.error_unknown_host)
+                    is java.net.ConnectException -> context.getString(R.string.error_connection_refused)
+                    is java.net.SocketTimeoutException -> context.getString(R.string.error_socket_timeout)
+                    is HttpException -> {
+                        when (e.code()) {
+                            401 -> context.getString(R.string.error_unauthorized)
+                            404 -> context.getString(R.string.error_endpoint_not_found)
+                            in 500..599 -> context.getString(R.string.error_server_error, e.code())
+                            else -> context.getString(R.string.error_http_error, e.code(), e.message())
+                        }
+                    }
+                    else -> context.getString(R.string.error_connection_failed, e.message ?: "Unknown error")
+                }
+                _connectionState.value = ConnectionState.Error(errorMessage)
             }
         }
     }
@@ -367,133 +402,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _connectionState.value = ConnectionState.Disconnected
     }
 
-    private fun startProgressPolling() {
-        progressPollingJob?.cancel()
-        progressPollingJob = viewModelScope.launch {
-            val currentApiAddress = settingsRepository.apiAddressFlow.first()
-            val currentTimeout = settingsRepository.timeoutFlow.first()
-            val service = getApiService(currentApiAddress, currentTimeout.toLong())
-            while (true) {
-                try {
-                    val progress = service.getProgress()
-                    val step = "${progress.state.samplingStep}/${progress.state.samplingSteps}"
-                    _uiState.value = MainUiState.Loading(progress.progress, step)
-                    notificationHelper.showProgressNotification(
-                        "Generation in progress...",
-                        "${(progress.progress * 100).toInt()}% ($step)",
-                        (progress.progress * 100).toInt(),
-                        100
-                    )
-                    if (progress.progress >= 1.0f) break
-                } catch (e: Exception) {
-                    // Ignore polling errors
-                }
-                delay(1000)
-            }
-        }
-    }
-
     fun generateImage() {
         viewModelScope.launch {
-            _uiState.value = MainUiState.Loading(0f, "0/${steps.value.toInt()}")
-            notificationHelper.showProgressNotification("Generation Started", "Your image is being generated.", 0, 100)
-            startProgressPolling()
-            try {
-                val currentApiAddress = settingsRepository.apiAddressFlow.first()
-                val service = getApiService(currentApiAddress, 0L) // 0L for infinite timeout
-                val overrideSettings = selectedModel.value?.let {
-                    mapOf("sd_model_checkpoint" to it.modelName)
-                } ?: emptyMap()
+            val context = getApplication<Application>().applicationContext
+            // Use addToQueue logic, but also start the service.
+            val count = queueRepository.getCount()
+            val loraJson = Gson().toJson(selectedLoras.value)
+            val item = QueueItem(
+                prompt = prompt.value,
+                negativePrompt = negativePrompt.value,
+                steps = steps.value.toInt(),
+                sampler = selectedSampler.value,
+                cfgScale = cfgScale.value,
+                seed = seed.value.toLongOrNull() ?: -1,
+                width = width.value.toIntOrNull() ?: 512,
+                height = height.value.toIntOrNull() ?: 512,
+                model = selectedModel.value?.modelName ?: "",
+                vae = selectedVae.value?.modelName,
+                loras = loraJson,
+                batchSize = batchSize.value.toIntOrNull() ?: 1,
+                batchCount = batchCount.value.toIntOrNull() ?: 1,
+                denoisingStrength = if (generationMode.value == GenerationMode.Img2Img) denoisingStrength.value else null,
+                initialImagePath = if (generationMode.value == GenerationMode.Img2Img) initImageUri.value else null,
+                status = "waiting",
+                queueOrder = count
+            )
+            queueRepository.add(item)
 
-                val loraPrompt = selectedLoras.value.joinToString(" ") { "<lora:${it.lora.name}:${it.weight}>" }
-                val finalPrompt = if (loraPrompt.isNotBlank()) "${prompt.value} $loraPrompt" else prompt.value
+            val intent = Intent(context, QueueExecutionService::class.java)
+            context.startService(intent)
 
-                val response = when (generationMode.value) {
-                    GenerationMode.Txt2Img -> {
-                        val request = Txt2ImgRequest(
-                            prompt = finalPrompt,
-                            negativePrompt = negativePrompt.value,
-                            steps = steps.value.toInt(),
-                            cfgScale = cfgScale.value,
-                            width = width.value.toIntOrNull() ?: 512,
-                            height = height.value.toIntOrNull() ?: 512,
-                            samplerName = selectedSampler.value,
-                            seed = seed.value.toLongOrNull() ?: -1,
-                            batchSize = batchSize.value.toIntOrNull() ?: 1,
-                            batchCount = batchCount.value.toIntOrNull() ?: 1,
-                            overrideSettings = overrideSettings
-                        )
-                        service.textToImage(request)
-                    }
-                    GenerationMode.Img2Img -> {
-                        val imageUri = initImageUri.value ?: run {
-                            _uiState.value = MainUiState.Error("Initial image not selected.")
-                            return@launch
-                        }
-                        val encodedImage = ImageHelper.getBase64FromUri(getApplication(), Uri.parse(imageUri)) ?: run {
-                            _uiState.value = MainUiState.Error("Failed to load image.")
-                            return@launch
-                        }
-
-                        val request = Img2ImgRequest(
-                            prompt = finalPrompt,
-                            negativePrompt = negativePrompt.value,
-                            steps = steps.value.toInt(),
-                            cfgScale = cfgScale.value,
-                            width = width.value.toIntOrNull() ?: 512,
-                            height = height.value.toIntOrNull() ?: 512,
-                            samplerName = selectedSampler.value,
-                            seed = seed.value.toLongOrNull() ?: -1,
-                            batchSize = batchSize.value.toIntOrNull() ?: 1,
-                            batchCount = batchCount.value.toIntOrNull() ?: 1,
-                            initImages = listOf(encodedImage),
-                            denoisingStrength = denoisingStrength.value,
-                            overrideSettings = overrideSettings,
-                            mask = maskBitmap.value?.let { ImageHelper.bitmapToBase64(it) }
-                        )
-                        service.imageToImage(request)
-                    }
-                }
-
-                progressPollingJob?.cancel()
-
-                if (response.images.isNotEmpty()) {
-                    val bitmaps = response.images.map {
-                        val decodedBytes = Base64.decode(it, Base64.DEFAULT)
-                        BitmapFactory.decodeByteArray(decodedBytes, 0, decodedBytes.size)
-                    }
-
-                    bitmaps.forEach { bitmap ->
-                        val imagePath = ImageHelper.saveImageToInternalStorage(getApplication(), bitmap, "history")
-                        if (imagePath != null) {
-                            val historyItem = HistoryItem(
-                                prompt = prompt.value,
-                                negativePrompt = negativePrompt.value,
-                                steps = steps.value.toInt(),
-                                cfgScale = cfgScale.value,
-                                width = width.value.toIntOrNull() ?: 512,
-                                height = height.value.toIntOrNull() ?: 512,
-                                samplerName = selectedSampler.value,
-                                seed = seed.value.toLongOrNull() ?: -1,
-                                imagePath = imagePath
-                            )
-                            historyDao.insert(historyItem)
-                        }
-                    }
-
-                    _uiState.value = MainUiState.Success(bitmaps)
-                    notificationHelper.showCompletionNotification("Generation Complete", "${bitmaps.size} images are ready!")
-                } else {
-                    _uiState.value = MainUiState.Error("No images received from API.")
-                    notificationHelper.showCompletionNotification("Generation Failed", "No images were returned from the API.")
-                }
-
-            } catch (e: Exception) {
-                progressPollingJob?.cancel()
-                val errorMessage = e.message ?: "An unknown error occurred."
-                _uiState.value = MainUiState.Error(errorMessage)
-                notificationHelper.showCompletionNotification("Generation Failed", errorMessage)
-            }
+            Toast.makeText(context, "Generation started in background.", Toast.LENGTH_SHORT).show()
+            // Since generation is now in the background, the UI should go back to Idle.
+            // The user can check progress via notifications or the queue screen.
+            _uiState.value = MainUiState.Idle
         }
     }
 
@@ -667,6 +609,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun applyEmbedding(embeddingName: String) {
+        val currentPrompt = prompt.value
+        if (currentPrompt.isBlank()) {
+            prompt.value = embeddingName
+        } else {
+            prompt.value = "$currentPrompt, $embeddingName"
+        }
+    }
+
     fun addToQueue() {
         viewModelScope.launch {
             val count = queueRepository.getCount()
@@ -681,6 +632,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 width = width.value.toIntOrNull() ?: 512,
                 height = height.value.toIntOrNull() ?: 512,
                 model = selectedModel.value?.modelName ?: "",
+                vae = selectedVae.value?.modelName,
                 loras = loraJson,
                 batchSize = batchSize.value.toIntOrNull() ?: 1,
                 batchCount = batchCount.value.toIntOrNull() ?: 1,

@@ -15,6 +15,7 @@ data class QueueItem(
     val width: Int,
     val height: Int,
     val model: String,
+    val vae: String?,
     val loras: String, // JSON a string for simplicity
     val batchSize: Int,
     val batchCount: Int,

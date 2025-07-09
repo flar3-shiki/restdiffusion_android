@@ -14,6 +14,8 @@ data class HistoryItem(
     val height: Int,
     val samplerName: String,
     val seed: Long,
+    val modelName: String,
     val imagePath: String, // Store the path to the saved image
+    val isFavorite: Boolean = false,
     val createdAt: Long = System.currentTimeMillis()
 )

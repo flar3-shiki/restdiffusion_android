@@ -70,4 +70,23 @@
     <string name="add_keyword">Add keyword</string>
     <string name="add">Add</string>
     <string name="remove_keyword">Remove keyword</string>
+    <string name="cancel_subsequent">Cancel Subsequent</string>
+    <string name="vae">VAE</string>
+    <string name="add_embedding">Add Embedding</string>
+    <string name="select_embedding">Select Embedding</string>
+    <string name="interrupt">Interrupt</string>
+    <string name="queue_title">Generation Queue</string>
+    <string name="queue_start">Start</string>
+    <string name="queue_clear_all">Clear All</string>
+    <string name="queue_delete_item_cd">Delete Queued Item</string>
+    <string name="queue_item_details">Status: %1$s | Sampler: %2$s | Seed: %3$d</string>
+    <string name="favorites">Favorites</string>
+    <string name="error_unknown_host">Server not found. Check the address in Settings.</string>
+    <string name="error_connection_refused">Connection refused. Is the server running on that address and port?</string>
+    <string name="error_socket_timeout">Connection timed out. Check the server or increase the timeout in Settings.</string>
+    <string name="error_unauthorized">Unauthorized. Check your username and password in Settings.</string>
+    <string name="error_endpoint_not_found">Endpoint not found on server. Is this a Stable Diffusion WebUI server?</string>
+    <string name="error_server_error">Server error (%1$d). Please check the server logs.</string>
+    <string name="error_http_error">HTTP Error: %1$d. %2$s</string>
+    <string name="error_connection_failed">Connection failed: %1$s</string>
 </resources>

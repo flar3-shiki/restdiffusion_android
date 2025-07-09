@@ -33,4 +33,7 @@ interface QueueDao {
 
     @Query("DELETE FROM queue")
     suspend fun clear()
+
+    @Query("DELETE FROM queue WHERE status = 'waiting' AND queueOrder > (SELECT queueOrder FROM queue WHERE status = 'processing' LIMIT 1)")
+    suspend fun deleteWaitingAfterProcessing()
 }

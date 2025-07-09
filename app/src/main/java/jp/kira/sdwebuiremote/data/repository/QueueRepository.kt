@@ -34,4 +34,8 @@ class QueueRepository(private val queueDao: QueueDao) {
     suspend fun clear() {
         queueDao.clear()
     }
+
+    suspend fun deleteWaitingAfterProcessing() {
+        queueDao.deleteWaitingAfterProcessing()
+    }
 }

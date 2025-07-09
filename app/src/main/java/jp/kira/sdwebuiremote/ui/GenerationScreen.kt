@@ -48,9 +48,12 @@ fun GenerationScreen(viewModel: MainViewModel) {
     val selectedModel by viewModel.selectedModel.collectAsState()
     val loras by viewModel.loras.collectAsState()
     val selectedLoras by viewModel.selectedLoras.collectAsState()
+    val vaes by viewModel.vaes.collectAsState()
+    val selectedVae by viewModel.selectedVae.collectAsState()
 
     var showLoraDialog by remember { mutableStateOf(false) }
     var showStyleDialog by remember { mutableStateOf(false) }
+    var showEmbeddingDialog by remember { mutableStateOf(false) }
 
     if (showLoraDialog) {
         LoraSelectionDialog(
@@ -63,6 +66,13 @@ fun GenerationScreen(viewModel: MainViewModel) {
         StyleSelectionDialog(
             viewModel = viewModel,
             onDismiss = { showStyleDialog = false }
+        )
+    }
+
+    if (showEmbeddingDialog) {
+        EmbeddingSelectionDialog(
+            viewModel = viewModel,
+            onDismiss = { showEmbeddingDialog = false }
         )
     }
 
@@ -201,8 +211,13 @@ fun GenerationScreen(viewModel: MainViewModel) {
                         .height(120.dp)
                 )
 
-                TextButton(onClick = { showStyleDialog = true }) {
-                    Text(stringResource(R.string.apply_style))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { showStyleDialog = true }) {
+                        Text(stringResource(R.string.apply_style))
+                    }
+                    TextButton(onClick = { showEmbeddingDialog = true }) {
+                        Text(stringResource(R.string.add_embedding))
+                    }
                 }
 
                 // --- LoRA Section ---

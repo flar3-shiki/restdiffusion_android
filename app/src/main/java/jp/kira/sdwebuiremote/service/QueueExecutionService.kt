@@ -33,6 +33,7 @@ class QueueExecutionService : Service() {
 
     private val job = SupervisorJob()
     private val scope = CoroutineScope(Dispatchers.IO + job)
+    private var progressPollingJob: Job? = null
 
     private lateinit var queueRepository: QueueRepository
     private lateinit var settingsRepository: SettingsRepository
@@ -84,23 +85,55 @@ class QueueExecutionService : Service() {
         }
     }
 
+    private fun startProgressPolling(prompt: String) {
+        progressPollingJob?.cancel()
+        progressPollingJob = scope.launch {
+            val apiAddress = settingsRepository.apiAddressFlow.first()
+            // Use a shorter timeout for polling than for the main request
+            val apiService = getApiService(apiAddress, 10, "", "")
+            while (isActive) {
+                try {
+                    val progress = apiService.getProgress()
+                    val step = "${progress.state.samplingStep}/${progress.state.samplingSteps}"
+                    notificationHelper.showProgressNotification(
+                        "Queue: Generating...",
+                        "$prompt - ${(progress.progress * 100).toInt()}% ($step)",
+                        (progress.progress * 100).toInt(),
+                        100
+                    )
+                    if (progress.progress >= 1.0f) break
+                } catch (e: Exception) {
+                    Log.w(TAG, "Progress polling failed: ${e.message}")
+                }
+                delay(1000)
+            }
+        }
+    }
+
     private suspend fun generateImage(item: QueueItem) {
         Log.d(TAG, "generateImage: Processing item ${item.id}")
         try {
             queueRepository.update(item.copy(status = "processing"))
-            notificationHelper.showProgressNotification("Queue: Generating...", item.prompt, 0, 100)
+            startProgressPolling(item.prompt)
 
             val apiAddress = settingsRepository.apiAddressFlow.first()
             val timeout = settingsRepository.timeoutFlow.first().toLong()
             val username = settingsRepository.usernameFlow.first()
             val password = settingsRepository.passwordFlow.first()
 
+            // Use a long timeout for the generation request itself
             val service = getApiService(apiAddress, timeout, username, password)
 
             val loraType = object : TypeToken<List<SelectedLora>>() {}.type
             val selectedLoras: List<SelectedLora> = Gson().fromJson(item.loras, loraType)
             val loraPrompt = selectedLoras.joinToString(" ") { "<lora:${it.lora.name}:${it.weight}>" }
             val finalPrompt = if (loraPrompt.isNotBlank()) "${item.prompt} $loraPrompt" else item.prompt
+
+            val overrideSettings = mutableMapOf<String, String>()
+            overrideSettings["sd_model_checkpoint"] = item.model
+            item.vae?.let {
+                overrideSettings["sd_vae"] = it
+            }
 
             val response = if (item.initialImagePath == null) {
                 val request = Txt2ImgRequest(
@@ -114,7 +147,7 @@ class QueueExecutionService : Service() {
                     seed = item.seed,
                     batchSize = item.batchSize,
                     batchCount = item.batchCount,
-                    overrideSettings = mapOf("sd_model_checkpoint" to item.model)
+                    overrideSettings = overrideSettings
                 )
                 service.textToImage(request)
             } else {
@@ -134,7 +167,7 @@ class QueueExecutionService : Service() {
                     batchCount = item.batchCount,
                     initImages = listOf(encodedImage),
                     denoisingStrength = item.denoisingStrength ?: 0.75f,
-                    overrideSettings = mapOf("sd_model_checkpoint" to item.model)
+                    overrideSettings = overrideSettings
                 )
                 service.imageToImage(request)
             }
@@ -155,6 +188,7 @@ class QueueExecutionService : Service() {
                         height = item.height,
                         samplerName = item.sampler,
                         seed = item.seed,
+                        modelName = item.model,
                         imagePath = imagePath
                     )
                     historyDao.insert(historyItem)
@@ -171,6 +205,8 @@ class QueueExecutionService : Service() {
             Log.e(TAG, "generateImage: Error processing item ${item.id}", e)
             queueRepository.update(item.copy(status = "failed"))
             notificationHelper.showCompletionNotification("Queue: Item Failed", e.message ?: "Unknown error")
+        } finally {
+            progressPollingJob?.cancel()
         }
     }
 

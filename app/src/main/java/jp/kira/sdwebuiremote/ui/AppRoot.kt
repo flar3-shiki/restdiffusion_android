@@ -120,7 +120,7 @@ fun AppRoot(mainViewModel: MainViewModel) {
                 }
                 composable(Screen.History.route) {
                     HistoryScreen(
-                        viewModel = mainViewModel,
+                        mainViewModel = mainViewModel,
                         navController = navController,
                         onNavigateBack = { navController.popBackStack() }
                     )
@@ -131,7 +131,7 @@ fun AppRoot(mainViewModel: MainViewModel) {
                 ) { backStackEntry ->
                     val historyId = backStackEntry.arguments?.getInt("historyId") ?: 0
                     HistoryDetailScreen(
-                        viewModel = mainViewModel,
+                        mainViewModel = mainViewModel,
                         navController = navController,
                         historyId = historyId,
                         onNavigateBack = { navController.popBackStack() }
@@ -151,6 +151,13 @@ fun AppRoot(mainViewModel: MainViewModel) {
                 }
                 composable(Screen.Queue.route) {
                     QueueScreen()
+                }
+                composable(Screen.Favorites.route) {
+                    FavoritesScreen(
+                        mainViewModel = mainViewModel,
+                        navController = navController,
+                        onNavigateBack = { navController.popBackStack() }
+                    )
                 }
             }
         }
@@ -209,6 +216,15 @@ fun AppDrawerContent(navController: NavController, closeDrawer: () -> Unit) {
             selected = false,
             onClick = {
                 navController.navigate(Screen.History.route)
+                closeDrawer()
+            }
+        )
+        NavigationDrawerItem(
+            icon = { Icon(Icons.Filled.Star, contentDescription = stringResource(R.string.favorites)) },
+            label = { Text(stringResource(R.string.favorites)) },
+            selected = false,
+            onClick = {
+                navController.navigate(Screen.Favorites.route)
                 closeDrawer()
             }
         )

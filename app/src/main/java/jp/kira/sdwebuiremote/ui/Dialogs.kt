@@ -206,3 +206,35 @@ fun StyleSelectionDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
         }
     }
 }
+
+@Composable
+fun EmbeddingSelectionDialog(viewModel: MainViewModel, onDismiss: () -> Unit) {
+    val embeddings by viewModel.embeddings.collectAsState()
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card {
+            Column {
+                Text(stringResource(R.string.select_embedding), style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(16.dp))
+                LazyColumn(modifier = Modifier.weight(1f, fill = false)) {
+                    items(embeddings) { embeddingName ->
+                        Text(
+                            text = embeddingName,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.applyEmbedding(embeddingName)
+                                    onDismiss()
+                                }
+                                .padding(16.dp)
+                        )
+                    }
+                }
+                Row(modifier = Modifier.align(Alignment.End).padding(8.dp)) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                }
+            }
+        }
+    }
+}

@@ -11,4 +11,5 @@ sealed class Screen(val route: String) {
     object Licenses : Screen("licenses")
     object PromptStyles : Screen("prompt_styles")
     object Queue : Screen("queue")
+    object Favorites : Screen("favorites")
 }
