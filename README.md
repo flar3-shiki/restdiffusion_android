@@ -60,7 +60,7 @@ WebUIを起動しているPCのローカルIPアドレスを確認します。
 ### 3. アプリ側の設定
 
 1.  本アプリを起動し、サイドメニューから「設定」画面を開きます。
-2.  「API Endpoint」の項目に、先ほど確認したPCのIPアドレスとWebUIのポート番号（デフ��ルトは`7860`）を組み合わせたアドレスを入力します。
+2.  「API Endpoint」の項目に、先ほど確認したPCのIPアドレスとWebUIのポート番号（デフォルトは`7860`）を組み合わせたアドレスを入力します。
     *   例: `http://192.168.1.10:7860`
 3.  WebUI側で認証を設定した場合、「API Authentication」の項目に、設定したユーザー名とパスワードを入力します。
 4.  設定画面を閉じ、メイン画面に戻ります。「Connect to Server」ボタンを押して接続できればセットアップは完了です。
@@ -82,7 +82,7 @@ WebUIを起動しているPCのローカルIPアドレスを確認します。
 ## 📄 ライセンス
 
 ```
-Copyright 2024 [Your Name]
+Copyright 2024 Kira
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
