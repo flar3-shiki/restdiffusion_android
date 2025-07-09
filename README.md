@@ -87,7 +87,7 @@ WebUIを起動しているPCのローカルIPアドレスを確認します。
 ## 📄 ライセンス
 
 ```
-Copyright 2024 [Your Name]
+Copyright 2024 Kira
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
